@@ -25,11 +25,14 @@ var myPort string
 var nServers int
 var CliConn []*net.UDPConn
 var ServConn *net.UDPConn
-var mutex sync.Mutex       // Mutex para proteger o relógio lógico
+
+var mutex sync.Mutex       // Mutex para proteger o relógio lógico e variáveis compartilhadas
 var replyCount int         // Contador de respostas recebidas
 var deferredReplies []int  // Lista de processos para os quais precisamos enviar respostas adiadas
 var requestingCS bool      // Indicador se o processo está solicitando a SC
 var inCS bool              // Indicador se o processo está na SC
+
+var replyChan chan bool    // Canal para sinalizar quando todas as respostas foram recebidas
 
 func CheckError(err error) {
     if err != nil {
@@ -61,11 +64,6 @@ func doServerJob() {
             continue
         }
 
-        mutex.Lock()
-        // Atualiza o relógio lógico
-        clock = max(clock, msg.Clock) + 1
-        mutex.Unlock()
-
         switch msg.Type {
         case "REQUEST":
             handleRequest(msg)
@@ -82,9 +80,9 @@ func doServerJob() {
 
 func handleRequest(msg Message) {
     mutex.Lock()
-    defer mutex.Unlock()
 
-    defer sendReply(msg.From)
+    // Atualiza o relógio lógico
+    clock = max(clock, msg.Clock) + 1
 
     // Verifica prioridade
     ourPriority := clock
@@ -93,25 +91,34 @@ func handleRequest(msg Message) {
     if inCS || (requestingCS && (senderPriority > ourPriority || (senderPriority == ourPriority && msg.From > id))) {
         // Adiar resposta
         deferredReplies = append(deferredReplies, msg.From)
+        mutex.Unlock()
     } else {
         // Enviar resposta imediatamente
-        // A resposta será enviada após o mutex ser liberado
+        // Prepara a mensagem de resposta
+        replyMsg := Message{
+            Type:  "REPLY",
+            From:  id,
+            Clock: clock,
+        }
+        mutex.Unlock() // Desbloqueia antes de enviar a resposta
+        sendReply(msg.From, replyMsg)
     }
 }
 
 func handleReply(msg Message) {
     mutex.Lock()
-    defer mutex.Unlock()
+    // Atualiza o relógio lógico
+    clock = max(clock, msg.Clock) + 1
     replyCount++
+    if replyCount == nServers {
+        // Sinaliza que todas as respostas foram recebidas
+        replyChan <- true
+    }
+    mutex.Unlock()
 }
 
-func sendReply(dest int) {
+func sendReply(dest int, msg Message) {
     // Envia uma mensagem de REPLY para o processo destino
-    msg := Message{
-        Type:  "REPLY",
-        From:  id,
-        Clock: clock,
-    }
 
     jsonMsg, err := json.Marshal(msg)
     if err != nil {
@@ -141,6 +148,7 @@ func requestCS() {
     requestingCS = true
     replyCount = 0
     deferredReplies = []int{}
+    replyChan = make(chan bool, 1)
     mutex.Unlock()
 
     // Envia REQUEST para todos os outros processos
@@ -164,15 +172,7 @@ func requestCS() {
     }
 
     // Aguarda receber REPLY de todos os outros processos
-    for {
-        mutex.Lock()
-        if replyCount == nServers {
-            mutex.Unlock()
-            break
-        }
-        mutex.Unlock()
-        time.Sleep(100 * time.Millisecond)
-    }
+    <-replyChan
 
     enterCS()
 }
@@ -189,7 +189,7 @@ func enterCS() {
     sendToSharedResource()
 
     // Simula uso da SC
-    time.Sleep(2 * time.Second)
+    time.Sleep(5 * time.Second)
 
     fmt.Println("Saí da SC")
 
@@ -197,19 +197,29 @@ func enterCS() {
     inCS = false
     // Envia respostas adiadas
     for _, proc := range deferredReplies {
-        sendReply(proc)
+        // Prepara a mensagem de resposta
+        replyMsg := Message{
+            Type:  "REPLY",
+            From:  id,
+            Clock: clock,
+        }
+        mutex.Unlock() // Desbloqueia antes de enviar a resposta
+        sendReply(proc, replyMsg)
+        mutex.Lock()   // Bloqueia novamente para acessar a próxima iteração
     }
+    deferredReplies = []int{} // Limpa a lista de respostas adiadas
     mutex.Unlock()
 }
 
 func sendToSharedResource() {
-    // Envia mensagem para o SharedResource
+    mutex.Lock()
     msg := Message{
         Type:  "CS",
         From:  id,
         Clock: clock,
         Text:  "Oi do processo " + strconv.Itoa(id),
     }
+    mutex.Unlock()
 
     jsonMsg, err := json.Marshal(msg)
     if err != nil {
@@ -329,7 +339,7 @@ func main() {
             if valid {
                 input = input
                 if input == "x" {
-                    requestCS()
+                    go requestCS()
                 } else if procID, err := strconv.Atoi(input); err == nil && procID == id {
                     // Ação interna: incrementa o relógio lógico
                     mutex.Lock()
@@ -343,7 +353,6 @@ func main() {
                 fmt.Println("Canal fechado!")
             }
         default:
-            // Não faz nada, evita bloqueio
             time.Sleep(500 * time.Millisecond)
         }
     }
