@@ -96,14 +96,20 @@ Para executar e testar, rode cada comando em um terminal diferente:
 
 ### Teste 1
 
-Elabore um caso trivial com um processo solicitando a CS e, depois que ele
-liberar, outro processo solicita a CS.
+Elabore um caso trivial com um processo solicitando a CS e, depois que ele liberar, outro processo solicita a CS.
 
 ![Teste 1](./imagens/caso1.png)
 
 ### Teste 2
 
-Elabore um caso em que um processo solicita a CS enquanto outro processo
-está usando a CS.
+Elabore um caso em que um processo solicita a CS enquanto outro processo está usando a CS.
 
 ![Teste 2](./imagens/caso2.png)
+
+### Teste 3
+
+Elabore um caso que caia especificamente na condição “state=WANTED and (T,pj)<(Ti,pi)”. A ideia é mostrar que um processo que pediu a CS antes, terá a pre ferência.
+
+![Teste 3](./imagens/caso3.png)
+
+Note que foi chamado primeiro o processo 3, antes de sair do SC foi chamado o processo 1 e 2. E o SC respeitou a preferencia.

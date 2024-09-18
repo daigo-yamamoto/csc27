@@ -23,8 +23,8 @@ var id int
 var clock int
 var myPort string
 var nServers int
-var ClientConnections []*net.UDPConn
-var ServConn *net.UDPConn
+var Cliconnection []*net.UDPconnection
+var Servconnection *net.UDPconnection
 
 var mutex sync.Mutex       // Mutex para proteger o relógio lógico e variáveis compartilhadas
 var replyCount int         // Contador de respostas recebidas
@@ -52,7 +52,7 @@ func PrintError(err error) {
 func doServerJob() {
     buf := make([]byte, 1024)
     for {
-        n, addr, err := ServConn.ReadFromUDP(buf)
+        n, addr, err := Servconnection.ReadFromUDP(buf)
         if err != nil {
             continue
         }
@@ -80,15 +80,11 @@ func doServerJob() {
 
 func handleRequest(msg Message) {
     mutex.Lock()
-
     // Atualiza o relógio lógico
     clock = max(clock, msg.Clock) + 1
 
     // Verifica prioridade
-    ourPriority := clock
-    senderPriority := msg.Clock
-
-    if inCS || (requestingCS && (senderPriority > ourPriority || (senderPriority == ourPriority && msg.From > id))) {
+    if inCS || (requestingCS && (msg.Clock < clock || (msg.Clock == clock && msg.From < id))) {
         // Adiar resposta
         deferredReplies = append(deferredReplies, msg.From)
         mutex.Unlock()
@@ -127,8 +123,8 @@ func sendReply(dest int, msg Message) {
     }
 
     idx := getProcessIndex(dest)
-    if idx >= 0 && idx < len(ClientConnections) {
-        _, err = ClientConnections[idx].Write(jsonMsg)
+    if idx >= 0 && idx < len(Cliconnection) {
+        _, err = Cliconnection[idx].Write(jsonMsg)
         if err != nil {
             fmt.Println("Erro ao enviar REPLY para processo", dest, ":", err)
         }
@@ -165,7 +161,7 @@ func requestCS() {
     }
 
     for i := 0; i < nServers; i++ {
-        _, err = ClientConnections[i].Write(jsonMsg)
+        _, err = Cliconnection[i].Write(jsonMsg)
         if err != nil {
             fmt.Println("Erro ao enviar REQUEST para processo", i, ":", err)
         }
@@ -233,14 +229,14 @@ func sendToSharedResource() {
         return
     }
 
-    con, err := net.DialUDP("udp", nil, ServerAddr)
+    connection, err := net.DialUDP("udp", nil, ServerAddr)
     if err != nil {
         fmt.Println("Erro ao conectar com SharedResource:", err)
         return
     }
-    defer con.Close()
+    defer connection.Close()
 
-    _, err = con.Write(jsonMsg)
+    _, err = connection.Write(jsonMsg)
     if err != nil {
         fmt.Println("Erro ao enviar mensagem para SharedResource:", err)
     }
@@ -262,7 +258,7 @@ func getProcessIndex(procID int) int {
     return idx
 }
 
-func initConnections() {
+func initconnectionections() {
     var err error
     if len(os.Args) < 4 {
         fmt.Println("Uso: go run Process.go <id> :<porta1> :<porta2> ...")
@@ -286,12 +282,12 @@ func initConnections() {
     nServers = nTotalServers - 1
 
     // Inicializa conexões com outros servidores
-    ClientConnections = make([]*net.UDPConn, nServers)
+    Cliconnection = make([]*net.UDPconnection, nServers)
 
     // Configura a conexão do servidor para receber mensagens
     ServerAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1"+myPort)
     CheckError(err)
-    ServConn, err = net.ListenUDP("udp", ServerAddr)
+    Servconnection, err = net.ListenUDP("udp", ServerAddr)
     CheckError(err)
 
     // Configura conexões com outros servidores
@@ -302,9 +298,9 @@ func initConnections() {
         }
         ServerAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1"+os.Args[i+1])
         CheckError(err)
-        con, err := net.DialUDP("udp", nil, ServerAddr)
+        connection, err := net.DialUDP("udp", nil, ServerAddr)
         CheckError(err)
-        ClientConnections[idx] = con
+        Cliconnection[idx] = connection
         idx++
     }
 }
@@ -323,10 +319,10 @@ func readInput(ch chan string) {
 }
 
 func main() {
-    initConnections()
-    defer ServConn.Close()
-    for _, con := range ClientConnections {
-        defer con.Close()
+    initconnectionections()
+    defer Servconnection.Close()
+    for _, connection := range Cliconnection {
+        defer connection.Close()
     }
 
     ch := make(chan string)
