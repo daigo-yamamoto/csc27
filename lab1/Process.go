@@ -23,7 +23,7 @@ var id int
 var clock int
 var myPort string
 var nServers int
-var CliConn []*net.UDPConn
+var ClientConnections []*net.UDPConn
 var ServConn *net.UDPConn
 
 var mutex sync.Mutex       // Mutex para proteger o relógio lógico e variáveis compartilhadas
@@ -127,8 +127,8 @@ func sendReply(dest int, msg Message) {
     }
 
     idx := getProcessIndex(dest)
-    if idx >= 0 && idx < len(CliConn) {
-        _, err = CliConn[idx].Write(jsonMsg)
+    if idx >= 0 && idx < len(ClientConnections) {
+        _, err = ClientConnections[idx].Write(jsonMsg)
         if err != nil {
             fmt.Println("Erro ao enviar REPLY para processo", dest, ":", err)
         }
@@ -165,7 +165,7 @@ func requestCS() {
     }
 
     for i := 0; i < nServers; i++ {
-        _, err = CliConn[i].Write(jsonMsg)
+        _, err = ClientConnections[i].Write(jsonMsg)
         if err != nil {
             fmt.Println("Erro ao enviar REQUEST para processo", i, ":", err)
         }
@@ -233,14 +233,14 @@ func sendToSharedResource() {
         return
     }
 
-    Conn, err := net.DialUDP("udp", nil, ServerAddr)
+    con, err := net.DialUDP("udp", nil, ServerAddr)
     if err != nil {
         fmt.Println("Erro ao conectar com SharedResource:", err)
         return
     }
-    defer Conn.Close()
+    defer con.Close()
 
-    _, err = Conn.Write(jsonMsg)
+    _, err = con.Write(jsonMsg)
     if err != nil {
         fmt.Println("Erro ao enviar mensagem para SharedResource:", err)
     }
@@ -286,7 +286,7 @@ func initConnections() {
     nServers = nTotalServers - 1
 
     // Inicializa conexões com outros servidores
-    CliConn = make([]*net.UDPConn, nServers)
+    ClientConnections = make([]*net.UDPConn, nServers)
 
     // Configura a conexão do servidor para receber mensagens
     ServerAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1"+myPort)
@@ -302,9 +302,9 @@ func initConnections() {
         }
         ServerAddr, err := net.ResolveUDPAddr("udp", "127.0.0.1"+os.Args[i+1])
         CheckError(err)
-        Conn, err := net.DialUDP("udp", nil, ServerAddr)
+        con, err := net.DialUDP("udp", nil, ServerAddr)
         CheckError(err)
-        CliConn[idx] = Conn
+        ClientConnections[idx] = con
         idx++
     }
 }
@@ -325,8 +325,8 @@ func readInput(ch chan string) {
 func main() {
     initConnections()
     defer ServConn.Close()
-    for _, conn := range CliConn {
-        defer conn.Close()
+    for _, con := range ClientConnections {
+        defer con.Close()
     }
 
     ch := make(chan string)
