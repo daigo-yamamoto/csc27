@@ -94,3 +94,16 @@ Para executar e testar, rode cada comando em um terminal diferente:
   - Digite o ID do processo no seu próprio teminal.
   - Exemplo: No terminal do `./Precess 1` digite `1`.
 
+### Teste 1
+
+Elabore um caso trivial com um processo solicitando a CS e, depois que ele
+liberar, outro processo solicita a CS.
+
+![Teste 1](./imagens/caso1.png.bmp)
+
+### Teste 2
+
+Elabore um caso em que um processo solicita a CS enquanto outro processo
+está usando a CS.
+
+![Teste 2](./imagens/caso2.png.bmp)
