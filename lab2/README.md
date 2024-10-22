@@ -137,3 +137,111 @@ Análise:
 - Impacto no Desempenho:
   - Em modo sequencial, o benefício é limitado.
   - Em um ambiente paralelo, mais reduce jobs podem melhorar o desempenho.
+
+
+# Parte 2
+
+Nessa parte veremos a execução do código MapReduce no modo distribuído, utilizando múltiplos workers e introduzindo falhas simuladas para testar o comportamento do sistema. O objetivo é verificar se o código responde adequadamente a falhas e se as operações Map e Reduce são corretamente distribuídas entre os workers.
+
+## Execução dos testes
+
+### Simular falha em operação de Map com um worker
+
+Neste teste, vamos executar o programa com um worker falho que simula uma falha ao processar a terceira operação de map.
+
+Comandos utilizados:
+
+1. Inicie o worker falho:
+
+```bash
+./wordcount -mode distributed -type worker -port 50001 -fail 3
+```
+
+2. Inicie um segundo worker normal:
+
+```bash
+./wordcount -mode distributed -type worker -port 50002
+```
+
+3. Inicie o master:
+
+```bash
+./wordcount -mode distributed -type master -file files/teste.txt -chunksize 102400 -reducejobs 5
+```
+![Simulação da falha em operação de Map com um worker](images/falho_map.png)
+
+Em que no terminal da esquerda foi inserido o primeiro comando, no do meio o segundo e no da direita o terceiro comando.
+
+Pode-se observar que:
+
+- O worker 1 falha após a terceira tarefa de map.
+- O master detecta a falha e realoca as operações restantes para o worker 2.
+
+### Simular falha em operação de Reduce
+
+Neste teste a falha será induzida durante uma operação de reduce.
+
+Comandos utilizados:
+
+1. Inicie o worker falho:
+
+```bash
+./wordcount -mode distributed -type worker -port 50001 -fail 2
+```
+
+2. Inicie um segundo worker normal:
+
+```bash
+./wordcount -mode distributed -type worker -port 50002
+```
+
+3. Inicie o master:
+
+```bash
+./wordcount -mode distributed -type master -file files/teste.txt -chunksize 102400 -reducejobs 5
+```
+![Simulação da falha em operação de Reduce](images/falho_reduce.png)
+
+Em que no terminal da esquerda foi inserido o primeiro comando, no do meio o segundo e no da direita o terceiro comando.
+
+Pode-se observar que:
+
+- O worker falha durante uma operação reduce.
+- O master detecta a falha e aloca a tarefa reduce para o outro worker.
+
+### Operações com múltiplos workers falhos e parâmetros variáveis
+
+Neste teste, usaremos diferentes valores de `chunksize` e `reducejobs`, além de incluir dois workers falhos.
+
+Comandos:
+
+Inicie dois workers falhos:
+
+```bash
+./wordcount -mode distributed -type worker -port 50001 -fail 3
+./wordcount -mode distributed -type worker -port 50002 -fail 4
+```
+
+Inicie um terceiro worker normal:
+
+```bash
+./wordcount -mode distributed -type worker -port 50003
+```
+
+Inicie o master com:
+
+```bash
+./wordcount -mode distributed -type master -file files/pg1342.txt -chunksize 204800 -reducejobs 3
+```
+
+![Simulação da falha em múltiplos workers](images/falho_multi.png)
+
+Pode-se observar que:
+
+- O master redistribui as tarefas falhadas dos dois workers.
+- As tarefas são concluídas corretamente, mesmo com múltiplas falhas.
+
+# Conclusão
+
+Ao final dos testes, o sistema se mostrou robusto ao lidar com falhas em workers, redistribuindo corretamente as operações de Map e Reduce.
+
