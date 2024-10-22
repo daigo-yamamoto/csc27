@@ -114,6 +114,26 @@ Configuração B:
   - Menos tarefas de map.
 
 Análise:
+
 - Desempenho:
   - Com chunks menores, há mais paralelismo potencial, mas também maior sobrecarga na criação de tarefas.
   - Com chunks maiores, a sobrecarga é reduzida, mas cada tarefa processa mais dados.
+
+### Experimento 2: Variando reducejobs
+
+Configuração A: 
+```bash
+    ./wordcount -mode sequential -file files/pg1342.txt -chunksize 2048 -reducejobs 2
+```
+
+Configuração B:
+```bash
+    ./wordcount -mode sequential -file files/pg1342.txt -chunksize 2048 -reducejobs 4
+```
+Análise:
+
+- Distribuição das Palavras:
+  - Com mais reduce jobs, as palavras são distribuídas entre mais tarefas.
+- Impacto no Desempenho:
+  - Em modo sequencial, o benefício é limitado.
+  - Em um ambiente paralelo, mais reduce jobs podem melhorar o desempenho.

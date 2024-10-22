@@ -49,70 +49,71 @@ func RunSequential(task *Task) {
 // 	- task: the Task object that contains the mapreduce operation.
 //  - hostname: the tcp/ip address on which it will listen for connections.
 func RunMaster(task *Task, hostname string) {
-	var (
-		err                error
-		master             *Master
-		newRpcServer       *rpc.Server
-		listener           net.Listener
-		reduceFilePathChan chan string
-		mapOperations      int
-		reduceOperations   int
-	)
+    var (
+        err                error
+        master             *Master
+        newRpcServer       *rpc.Server
+        listener           net.Listener
+        reduceFilePathChan chan string
+        mapOperations      int
+        reduceOperations   int
+    )
 
-	log.Println("Running Master on", hostname)
+    log.Println("Running Master on", hostname)
 
-	// Create a reduce directory to store intemediate reduce files.
-	_ = os.Mkdir(REDUCE_PATH, os.ModePerm)
-	_ = RemoveContents(REDUCE_PATH)
+    // Create a reduce directory to store intermediate reduce files.
+    _ = os.Mkdir(REDUCE_PATH, os.ModePerm)
+    _ = RemoveContents(REDUCE_PATH)
 
-	master = newMaster(hostname)
+    master = newMaster(hostname)
 
-	master.task = task
-	newRpcServer = rpc.NewServer()
-	newRpcServer.Register(master)
+    master.task = task
+    newRpcServer = rpc.NewServer()
+    newRpcServer.Register(master)
 
-	if err != nil {
-		log.Panicln("Failed to register RPC server. Error:", err)
-	}
+    if err != nil {
+        log.Panicln("Failed to register RPC server. Error:", err)
+    }
 
-	master.rpcServer = newRpcServer
+    master.rpcServer = newRpcServer
 
-	listener, err = net.Listen("tcp", master.address)
+    listener, err = net.Listen("tcp", master.address)
 
-	if err != nil {
-		log.Panicln("Failed to start TCP server. Error:", err)
-	}
+    if err != nil {
+        log.Panicln("Failed to start TCP server. Error:", err)
+    }
 
-	master.listener = listener
+    master.listener = listener
 
-	// Start MapReduce Operation
+    // Start MapReduce Operation
 
-	go master.acceptMultipleConnections()
-	go master.handleFailingWorkers()
+    go master.acceptMultipleConnections()
+    go master.handleFailingWorkers()
 
-	// Schedule map operations
-	mapOperations = master.schedule(task, "Worker.RunMap", task.InputFilePathChan)
+    // Schedule map operations
+    mapOperations = master.schedule(task, "Worker.RunMap", task.InputFilePathChan)
 
-	// Merge the result of multiple map operation with the same reduceId into a single file
-	mergeMapLocal(task, mapOperations)
+    // Merge the result of multiple map operation with the same reduceId into a single file
+    mergeMapLocal(task, mapOperations)
 
-	// Schedule reduce operations
-	reduceFilePathChan = fanReduceFilePath(task.NumReduceJobs)
-	reduceOperations = master.schedule(task, "Worker.RunReduce", reduceFilePathChan)
+    // Schedule reduce operations
+    reduceFilePathChan = fanReduceFilePath(task.NumReduceJobs)
+    reduceOperations = master.schedule(task, "Worker.RunReduce", reduceFilePathChan)
 
-	mergeReduceLocal(reduceOperations)
+    mergeReduceLocal(reduceOperations)
 
-	log.Println("Closing Remote Workers.")
-	for _, worker := range master.workers {
-		err = worker.callRemoteWorker("Worker.Done", new(struct{}), new(struct{}))
-		if err != nil {
-			log.Println("Failed to close Remote Worker. Error:", err)
-		}
-	}
+    log.Println("Closing Remote Workers.")
+    for _, worker := range master.workers {
+        err = worker.callRemoteWorker("Worker.Done", new(struct{}), new(struct{}))
+        if err != nil {
+            log.Println("Failed to close Remote Worker. Error:", err)
+        }
+    }
 
-	log.Println("Done.")
-	return
+    log.Println("Done.")
+    return
 }
+
 
 // RunWorker will run a instance of a worker. It'll initialize and then try to register with
 // master.
